@@ -4,6 +4,11 @@ bucket = "20120107-a"
 example_log_entry = <<-eof
 fa0120f03b0f093488ef26e8299feb9fc737d7d2929b9094be71b99fed14e331 20120107-a [18/Feb/2014:01:05:48 +0000] 10.87.193.123 arn:aws:iam::269892434371:user/dfarrell 4252A222765A6A9D REST.GET.TAGGING - "GET /20120107-a?tagging HTTP/1.1" 404 NoSuchTagSet 278 - 85 - "-" "S3Console/0.4" -
 eof
+additional_log_entries = []
+additional_log_entries.push <<-eof
+fa0120f03b0f093488ef26e8299feb9fc737d7d2929b9094be71b99fed14e331 bloom-prod-west1-backup [18/Feb/2014:07:40:51 +0000] - AmazonS3 16C0A391707CEAEE S3.TRANSITION.OBJECT sql/2013/11/prodwest-dbmaster/bloomhealth/mysqldump-15m-bloomhealth-D9440DF6-20131119-1300.sql.gz.gpg "-" - - - 737028378 - - "-" "-" -
+eof
+
 parsed_entry=nil
 expected_hash = nil 
 
@@ -43,9 +48,11 @@ describe S3LogSet do
             :actions => { parsed_entry['requester'] => [ parsed_entry['operation'] ] },
             :first_access => parsed_entry['time'],
             :last_access => parsed_entry['time'],
-            :requests => { parsed_entry['request_id'] => parsed_entry }
+            # :requests => { parsed_entry['request_id'] => parsed_entry },
+            :request_count => 1
         }
     end
+
 
 end
 
@@ -64,7 +71,8 @@ describe S3BucketLog do
             :actions => {},
             :first_access => nil, 
             :last_access => nil, 
-            :requests => {}
+            # :requests => {},
+            :request_count => 0
         }
     end
 
@@ -78,6 +86,8 @@ describe S3BucketLog do
         h.should == expected_hash
     end
 
+
+
 end
 
 describe S3LogSet do
@@ -88,8 +98,51 @@ describe S3LogSet do
     it "should record log entry" do
         s3ls.record example_log_entry
     end
-    
+
     it "should supply hash of each log entry" do
         s3ls.to_hash.should == { bucket => expected_hash }
     end
+
+    it "Should parse other log entries (which has failed in the past) " do
+        additional_log_entries.each do |entry|
+            s3ls.record entry
+        end
+    end
+    
+    it "should supply hash of each log entry" do
+        s3ls.to_hash.should == { bucket => expected_hash,
+            "bloom-prod-west1-backup" => {
+                :bucket=>"bloom-prod-west1-backup",
+				:accessors=>["AmazonS3"],
+				:actions=>{"AmazonS3"=>["S3.TRANSITION.OBJECT"]},
+				:first_access=> DateTime.parse("2014-02-18T07:40:51+00:00"),
+				:last_access=> DateTime.parse("2014-02-18T07:40:51+00:00"),
+                :request_count => 1,
+=begin
+				:requests=>{   "16C0A391707CEAEE"=>{
+	                "owner"=>"fa0120f03b0f093488ef26e8299feb9fc737d7d2929b9094be71b99fed14e331",
+				    "bucket"=>"bloom-prod-west1-backup",
+				    "time"=> DateTime.parse("2014-02-18T07:40:51+00:00"),
+					"ip"=>"-",
+					"requester"=>"AmazonS3",
+					"request_id"=>"16C0A391707CEAEE",
+					"operation"=>"S3.TRANSITION.OBJECT",
+					"key"=>"sql/2013/11/prodwest-dbmaster/bloomhealth/mysqldump-15m-bloomhealth-D9440DF6-20131119-1300.sql.gz.gpg",
+					"uri"=>"-",
+					"status"=>"-",
+					"error"=>"-",
+					"bytes_sent"=>"-",
+					"object_size"=>"737028378",
+					"total_ms"=>"-",
+					"turnaround_ms"=>"-",
+					"referrer"=>"-",
+					"user_agent"=>"-",
+					"version_id"=>"-"
+                    }
+	             }
+=end
+	        }
+        }
+    end
+
 end

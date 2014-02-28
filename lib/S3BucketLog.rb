@@ -1,5 +1,5 @@
 
-require 'json'
+require "thread"
 
 class S3BucketLog
 
@@ -9,26 +9,31 @@ class S3BucketLog
         @actions = {}
         @first_access = nil
         @last_access = nil
-        @requests = {}
+        @request_count = 0
+        @semaphore = Mutex.new
+        # @requests = {}
     end
 
     def record parsed_entry
-        @requests[ parsed_entry['request_id'] ] = parsed_entry
-        if !@first_access || parsed_entry['time'] < @first_access
-            @first_access = parsed_entry['time']
-        end
-        if !@last_access || parsed_entry['time'] > @last_access
-            @last_access = parsed_entry['time']
-        end
-        unless @accessors.include? parsed_entry['requester'] 
-            @accessors << parsed_entry['requester'] 
-        end
-        unless @actions[parsed_entry['requester']].kind_of? Array
-            @actions[parsed_entry['requester']] = []
-        end
-        unless @actions[parsed_entry['requester']].include? parsed_entry['operation']
-            @actions[parsed_entry['requester']] << parsed_entry['operation']
-        end
+        @semaphore.synchronize {
+            @request_count += 1
+	        # @requests[ parsed_entry['request_id'] ] = parsed_entry
+	        if !@first_access || parsed_entry['time'] < @first_access
+	            @first_access = parsed_entry['time']
+	        end
+	        if !@last_access || parsed_entry['time'] > @last_access
+	            @last_access = parsed_entry['time']
+	        end
+	        unless @accessors.include? parsed_entry['requester'] 
+	            @accessors << parsed_entry['requester'] 
+	        end
+	        unless @actions[parsed_entry['requester']].kind_of? Array
+	            @actions[parsed_entry['requester']] = []
+	        end
+	        unless @actions[parsed_entry['requester']].include? parsed_entry['operation']
+	            @actions[parsed_entry['requester']] << parsed_entry['operation']
+	        end
+        }
     end
 
     def to_hash
@@ -37,7 +42,8 @@ class S3BucketLog
             :actions => @actions,
             :first_access => @first_access,
             :last_access => @last_access,
-            :requests => @requests
+            :request_count => @request_count,
+            #:requests => @requests
         }
     end
 
@@ -58,8 +64,8 @@ class S3LogSet
                 @bucket_logs[ parsed_entry['bucket'] ] = 
                     S3BucketLog.new parsed_entry['bucket']
             end
-            @bucket_logs[ parsed_entry['bucket'] ].record parsed_entry
         }
+        @bucket_logs[ parsed_entry['bucket'] ].record parsed_entry
     end
     
     def self.parseLogEntry entry
@@ -74,12 +80,12 @@ class S3LogSet
             (?<operation>[^\s]+)\s
             (?<key>[^\s]+)\s
             "(?<uri>[^"]+)"\s
-            (?<status>[\d]+)\s
+            (?<status>(-|[\d]+))\s
             (?<error>[^\s]+)\s
-            (?<bytes_sent>[-\d]+)\s
-            (?<object_size>[-\d]+)\s
-            (?<total_ms>[\d]+)\s
-            (?<turnaround_ms>[-\d]+)\s
+            (?<bytes_sent>(-|[\d]+))\s
+            (?<object_size>(-|[\d]+))\s
+            (?<total_ms>(-|[\d]+))\s
+            (?<turnaround_ms>(-|[\d]+))\s
             "(?<referrer>[^"]+)"\s
             "(?<user_agent>[^"]+)"\s
             (?<version_id>.*)

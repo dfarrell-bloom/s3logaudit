@@ -1,12 +1,15 @@
 #!/usr/bin/env ruby
 
 require 'thread'
+require 'json'
 
 require 'rubygems'
 require 'aws-sdk'
 require 'colorize'
 
-config = { :object_threads => 5, :queue_timeout => 1 }
+require_relative "lib/S3BucketLog.rb"
+
+config = { :object_threads => 100, :queue_timeout => 1 }
 
 log = Logger.new $stderr
 log.level = Logger::DEBUG
@@ -29,6 +32,8 @@ s3ObjectQueue = Queue.new
 s3ObjectRunners = Array.new
 filling = true
 
+s3ls = S3LogSet.new
+
 config[:object_threads].times do 
     th = Thread.new do 
         while filling || ( s3ObjectQueue.length > s3ObjectQueue.num_waiting  )
@@ -40,9 +45,25 @@ config[:object_threads].times do
             rescue Timeout::Error
                 next # try again
             end
+            msg = "Examining object #{object.key.to_s.red}" #{object.content_length} bytes, modified #{object.last_modified}"
             Thread.exclusive {
-                log.info "Examining object #{object.key.to_s.red} #{object.content_length} bytes, modified #{object.last_modified}"
-            }       
+                log.info msg
+            }
+            rest_of_line = ""
+            log_entries = object.read do |chunk|
+                chunk = rest_of_line + chunk
+                rest_of_line = ""
+                chunk.each_line do |line|
+                    if line[-1,1] == "\n" # full line
+                        line.strip!
+                        #log.debug "Full line   : #{line.green}"
+                        s3ls.record line
+                    else
+                        #log.debug "Partial line: #{line.blue}"
+                        rest_of_line = line
+                    end
+                end     
+            end
         end
     end
     s3ObjectRunners.push th 
@@ -67,3 +88,4 @@ s3ObjectRunners.each do |thread|
     thread.join if thread.alive? 
 end
 
+puts s3ls.to_hash.to_json
