@@ -1,5 +1,6 @@
 
 require "thread"
+require "mysql2"
 
 class S3BucketLog
 
@@ -57,7 +58,7 @@ class S3LogSet
         @bucket_logs = {}
     end
 
-    def record log_entry
+    def record log_entry, sqlconn=nil
         parsed_entry = self.class.parseLogEntry log_entry
         Thread.exclusive {
             unless @bucket_logs.has_key? parsed_entry['bucket']
@@ -66,6 +67,60 @@ class S3LogSet
             end
         }
         @bucket_logs[ parsed_entry['bucket'] ].record parsed_entry
+        if sqlconn
+            sqlconn.query( self.class.insertQuery parsed_entry, sqlconn );
+        end
+    end
+    
+    def self.insertQuery parsed_entry, sqlconn
+        fields = []
+        # guaranteed text fields
+        %w{ 
+            owner 
+            bucket 
+            request_id 
+        }.each do |key|
+            fields << "`#{key}`= '#{ sqlconn.escape parsed_entry[key]}'"
+        end
+        # optional text fields 
+        %w{  
+            operation
+            key
+            uri
+            error
+            referrer
+            user_agent
+            version_id
+            requester 
+        }.each do |key|
+            if parsed_entry[key] == '-'
+                fields << "`#{key}` = NULL"
+            else
+                fields << "`#{key}`= '#{ sqlconn.escape parsed_entry[key]}'"
+            end
+        end
+        ## (optional) numeric fields
+        %w{ 
+            status
+            bytes_sent
+            object_size
+            total_ms
+            turnaround_ms
+        }.each do |key|
+            if key == '-'
+                fields << "`key` = NULL"
+            else
+                fields << "`#{key}` = #{ parsed_entry[key].to_i }"
+            end
+        end
+        # special fields
+        fields << "`time` = '#{ parsed_entry['time'].strftime "%Y-%m-%d %H:%M:%S" }'"
+        fields << "`ip` = #{ 
+            parsed_entry['ip'] =~ /([0-9]{1,3}\.){3}[0-9]{1,3}/ ? 
+                "INET_ATON('#{parsed_entry['ip']}')" : 
+                "NULL" 
+            }" 
+        "REPLACE INTO log_entries SET #{fields.join ', '};"
     end
     
     def self.parseLogEntry entry

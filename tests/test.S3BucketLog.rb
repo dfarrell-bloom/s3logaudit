@@ -92,10 +92,22 @@ end
 
 describe S3LogSet do
     s3ls = nil
+    conn = nil
     it "Should initiaize cleanly" do
         s3ls = S3LogSet.new 
     end
-    it "should record log entry" do
+
+    it "should output valid MySQL REPLACE query" do
+         conn = Mysql2::Client.new(
+            :host => ENV['MYSQL_HOST'],
+            :username => ENV['MYSQL_USER'],
+            :password => ENV['MYSQL_PASSWORD'],
+            :database => ENV['MYSQL_DATABASE']
+        )
+        q = s3ls.class.insertQuery parsed_entry, conn
+    end
+
+    it "should record log entry without database connection" do
         s3ls.record example_log_entry
     end
 
@@ -103,9 +115,9 @@ describe S3LogSet do
         s3ls.to_hash.should == { bucket => expected_hash }
     end
 
-    it "Should parse other log entries (which has failed in the past) " do
+    it "Should parse other log entries (which has failed in the past) with database connection" do
         additional_log_entries.each do |entry|
-            s3ls.record entry
+            s3ls.record entry, conn
         end
     end
     
@@ -145,4 +157,5 @@ describe S3LogSet do
         }
     end
 
+    
 end

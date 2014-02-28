@@ -6,6 +6,7 @@ require 'json'
 require 'rubygems'
 require 'aws-sdk'
 require 'colorize'
+require 'mysql2'
 
 require_relative "lib/S3BucketLog.rb"
 
@@ -28,6 +29,43 @@ unless buckets.length > 0
     exit 127
 end
 
+begin 
+    masterconn = Mysql2::Client.new( 
+        :host => ENV['MYSQL_HOST'], 
+        :username=> ENV['MYSQL_USER'], 
+        :password=> ENV['MYSQL_PASSWORD'],
+        :database => ENV['MYSQL_DATABASE']
+    )
+    masterconn.query "CREATE TABLE IF NOT EXISTS log_entries ( 
+        request_id CHAR(16) CHARACTER SET ascii NOT NULL,
+        PRIMARY KEY(request_id),
+        operation VARCHAR(255), 
+        KEY( operation ), 
+        owner VARCHAR(255) NOT NULL, 
+        bucket VARCHAR(255) NOT NULL, 
+        KEY( bucket ),
+        `time` DATETIME NOT NULL,
+        ip INT, 
+        requester VARCHAR(255),
+        KEY( requester ),
+        `key` VARCHAR(1024) CHARACTER SET utf8,
+        uri VARCHAR(2048) CHARACTER SET utf8,
+        status SMALLINT UNSIGNED, 
+        error VARCHAR(255) CHARACTER SET utf8,
+        bytes_sent BIGINT UNSIGNED,
+        object_size BIGINT UNSIGNED,
+        total_ms BIGINT UNSIGNED,
+        turnaround_ms BIGINT UNSIGNED,
+        referrer VARCHAR(65535) CHARACTER SET utf8,
+        user_agent VARCHAR(1024) CHARACTER SET utf8,
+        version_id VARCHAR(255) CHARACTER SET utf8
+    )"
+rescue Mysql2::Error => e
+    log.fatal "Mysql Error ##{e.errno} creating table `log_entries`: #{e.error}"
+ensure
+    masterconn.close if masterconn
+end 
+
 s3ObjectQueue = Queue.new
 s3ObjectRunners = Array.new
 filling = true
@@ -45,6 +83,12 @@ config[:object_threads].times do
             rescue Timeout::Error
                 next # try again
             end
+            myconn = Mysql2::Client.new( 
+                :host => ENV['MYSQL_HOST'], 
+                :username=> ENV['MYSQL_USER'], 
+                :password=> ENV['MYSQL_PASSWORD'],
+                :database => ENV['MYSQL_DATABASE']
+            )
             # msg = "Examining object #{object.key.to_s.red}" #{object.content_length} bytes, modified #{object.last_modified}"
             # Thread.exclusive { log.info msg }
             rest_of_line = ""
@@ -55,7 +99,7 @@ config[:object_threads].times do
                     if line[-1,1] == "\n" # full line
                         line.strip!
                         #log.debug "Full line   : #{line.green}"
-                        s3ls.record line
+                        s3ls.record line, myconn
                     else
                         #log.debug "Partial line: #{line.blue}"
                         rest_of_line = line
