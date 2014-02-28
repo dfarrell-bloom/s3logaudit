@@ -9,7 +9,7 @@ require 'colorize'
 
 require_relative "lib/S3BucketLog.rb"
 
-config = { :object_threads => 100, :queue_timeout => 1 }
+config = { :object_threads => 40, :queue_timeout => 1 }
 
 log = Logger.new $stderr
 log.level = Logger::DEBUG
@@ -45,10 +45,8 @@ config[:object_threads].times do
             rescue Timeout::Error
                 next # try again
             end
-            msg = "Examining object #{object.key.to_s.red}" #{object.content_length} bytes, modified #{object.last_modified}"
-            Thread.exclusive {
-                log.info msg
-            }
+            # msg = "Examining object #{object.key.to_s.red}" #{object.content_length} bytes, modified #{object.last_modified}"
+            # Thread.exclusive { log.info msg }
             rest_of_line = ""
             log_entries = object.read do |chunk|
                 chunk = rest_of_line + chunk
@@ -69,6 +67,20 @@ config[:object_threads].times do
     s3ObjectRunners.push th 
 end
 
+status_thread = Thread.new do 
+    $stderr.print msg="Examining queue.".bold.blue
+    last_msg_length = msg.length
+    while filling || s3ObjectQueue.length > 0 
+
+        msg = "Queue length: #{s3ObjectQueue.length.to_s.bold.blue}"
+        msg += " and counting" if filling
+        $stderr.print "%#{last_msg_length}s\r%s" % [ "", msg ]
+        last_msg_length = msg.length
+        sleep 1
+    end
+    $stderr.puts "%#{last_msg_length}s\r%s" % [ "", "Queue empty." ]
+end
+
 s3 = AWS::S3.new
 buckets.each do |bucket|
     s3bucket = s3.buckets[bucket]
@@ -78,7 +90,7 @@ buckets.each do |bucket|
     end
     s3bucket.objects.each do |object|
         s3ObjectQueue.push object   
-        Thread.exclusive { log.debug object.key.yellow }
+        # Thread.exclusive { log.debug object.key.yellow }
     end
 end
 
@@ -88,4 +100,6 @@ s3ObjectRunners.each do |thread|
     thread.join if thread.alive? 
 end
 
-puts s3ls.to_hash.to_json
+status_thread.join if status_thread.alive?
+
+puts JSON.pretty_generate( s3ls.to_hash )
