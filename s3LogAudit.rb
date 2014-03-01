@@ -29,6 +29,18 @@ unless buckets.length > 0
     exit 127
 end
 
+s3 = AWS::S3.new
+
+def query_or_fail conn, q
+    begin 
+        conn.query q
+    rescue Mysql2::Error => e 
+        raise Exception.new "Error executing SQL Query: \033[33m#{q}\033[0m\n" +
+            "MySQL Error #{e.errno} : #{e.message}"
+        return false
+    end
+end
+
 begin 
     masterconn = Mysql2::Client.new( 
         :host => ENV['MYSQL_HOST'], 
@@ -36,14 +48,23 @@ begin
         :password=> ENV['MYSQL_PASSWORD'],
         :database => ENV['MYSQL_DATABASE']
     )
-    masterconn.query "CREATE TABLE IF NOT EXISTS log_entries ( 
+    query_or_fail masterconn, "CREATE TABLE IF NOT EXISTS buckets ( 
+        name VARCHAR(255) NOT NULL PRIMARY KEY, 
+        logging_enabled BOOLEAN NOT NULL,
+        log_destination VARCHAR(255) DEFAULT NULL,
+        log_prefix VARCHAR(255) DEFAULT NULL,
+        is_log_destination BOOLEAN DEFAULT FALSE,
+        `empty` BOOLEAN NOT NULL
+    ) ENGINE=InnoDB CHARACTER SET utf8"
+    query_or_fail masterconn,  "CREATE TABLE IF NOT EXISTS log_entries ( 
         request_id CHAR(16) CHARACTER SET ascii NOT NULL,
         PRIMARY KEY(request_id),
         operation VARCHAR(255), 
         KEY( operation ), 
         owner VARCHAR(255) NOT NULL, 
         bucket VARCHAR(255) NOT NULL, 
-        KEY( bucket ),
+        CONSTRAINT FOREIGN KEY( bucket ) REFERENCES buckets (name) 
+            ON DELETE CASCADE ON UPDATE CASCADE,
         `time` DATETIME NOT NULL,
         ip INT, 
         requester VARCHAR(255),
@@ -59,12 +80,46 @@ begin
         referrer VARCHAR(65535) CHARACTER SET utf8,
         user_agent VARCHAR(1024) CHARACTER SET utf8,
         version_id VARCHAR(255) CHARACTER SET utf8
-    )"
-rescue Mysql2::Error => e
-    log.fatal "Mysql Error ##{e.errno} creating table `log_entries`: #{e.error}"
+    ) ENGINE=InnoDB CHARACTER SET utf8"
+    s3.buckets.each do |bucket|
+        log.debug "Examining logging on bucket #{bucket.name}"
+        logging_data = s3.client.get_bucket_logging( :bucket_name => bucket.name )
+        if logging_data.has_key? :logging_enabled
+            logging_enabled =  'TRUE' 
+            logging_data = logging_data[:logging_enabled]
+            log_destination = "'#{masterconn.escape logging_data[:target_bucket]}'"
+            log_prefix = "'#{masterconn.escape logging_data[:target_prefix]}'"
+        else
+            logging_enabled =  'FALSE' 
+            log_destination = 'NULL'
+            log_prefix = "NULL"
+        end
+        empty = ( bucket.empty? ? 'TRUE' : 'FALSE' )
+        log.info "Recording bucket #{bucket.name} and logging properties"
+        query_or_fail masterconn,  "REPLACE INTO buckets SET 
+            name = '#{ masterconn.escape bucket.name }', 
+            empty = #{ empty },
+            logging_enabled = #{logging_enabled},
+            log_destination = #{log_destination},
+            log_prefix = #{log_prefix}
+        "
+    end
+    query_or_fail masterconn,  "
+        UPDATE buckets logb
+        JOIN buckets b 
+            ON b.log_destination = logb.name
+        SET logb.is_log_destination = TRUE 
+    "
+    failed = false
+
+rescue Exception => e 
+    log.fatal "Error Creating bucket list: #{e.class.name}: #{e.message} \n  #{e.backtrace.join "\n\t"}"
+    failed = true   
 ensure
     masterconn.close if masterconn
+    exit 125 if failed
 end 
+
 
 s3ObjectQueue = Queue.new
 s3ObjectRunners = Array.new
@@ -74,6 +129,12 @@ s3ls = S3LogSet.new
 
 config[:object_threads].times do 
     th = Thread.new do 
+       myconn = Mysql2::Client.new( 
+            :host => ENV['MYSQL_HOST'], 
+            :username=> ENV['MYSQL_USER'], 
+            :password=> ENV['MYSQL_PASSWORD'],
+            :database => ENV['MYSQL_DATABASE']
+        )
         while filling || ( s3ObjectQueue.length > s3ObjectQueue.num_waiting  )
             begin 
                 # timeout avoids race on filling set to false after thread begins waiting
@@ -83,12 +144,6 @@ config[:object_threads].times do
             rescue Timeout::Error
                 next # try again
             end
-            myconn = Mysql2::Client.new( 
-                :host => ENV['MYSQL_HOST'], 
-                :username=> ENV['MYSQL_USER'], 
-                :password=> ENV['MYSQL_PASSWORD'],
-                :database => ENV['MYSQL_DATABASE']
-            )
             # msg = "Examining object #{object.key.to_s.red}" #{object.content_length} bytes, modified #{object.last_modified}"
             # Thread.exclusive { log.info msg }
             rest_of_line = ""
@@ -107,6 +162,7 @@ config[:object_threads].times do
                 end     
             end
         end
+        myconn.close()
     end
     s3ObjectRunners.push th 
 end
@@ -125,7 +181,6 @@ status_thread = Thread.new do
     $stderr.puts "%#{last_msg_length}s\r%s" % [ "", "Queue empty." ]
 end
 
-s3 = AWS::S3.new
 buckets.each do |bucket|
     s3bucket = s3.buckets[bucket]
     unless s3bucket.exists?
