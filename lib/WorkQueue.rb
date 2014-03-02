@@ -13,7 +13,7 @@ class WorkQueue
             # set to 0 if you want all threads to block on the queue forever.
             :queue_wait_timeout => 2, 
             :threads            => 10,
-            :log_leel           => Logger::DEBUG,
+            :log_level           => Logger::DEBUG,
             :log_destination    => $stderr,
         }
     end
@@ -21,7 +21,7 @@ class WorkQueue
     attr_accessor :thread_exit, :exit_on_empty
     attr_reader :config
 
-    def self.default_queue_runner 
+    def default_queue_runner 
         Proc.new {
             until threadsShouldExit
                 if @config[:queue_wait_timeout ]
@@ -30,6 +30,7 @@ class WorkQueue
                             queue_object = @queue.pop
                         }
                     rescue Timeout::Error
+                        log_debug "Thread #{Thread.current} timeout waiting for queue, retrying "
                         next
                     end
                 else # no :queue_wait_timeout, wait forever
@@ -43,18 +44,19 @@ class WorkQueue
         }
     end
 
-    def queue_runner_block
-        self.class.default_queue_runner
-    end
-    
     def initialize config = nil, &blk
-        configure config
-        @queue_runner_block = queue_runner_block
-        @queue = Queue.new
         @work_block = nil
         if block_given? 
             setWorkBlock blk
         end
+        if config.kind_of? Proc and not block_given?  ## handle case where config is not passed but block ( Proc ) is
+            configure
+            setWorkBlock config
+        else
+            configure config
+        end
+        @queue_runner_block = default_queue_runner
+        @queue = Queue.new
         @threads = []
         @thread_exit = false # flag for threads to exit wait loop
         @exit_on_empty = false # flag for threads to exit wait loop when queue is empty ( eg filling is complete ) 
@@ -70,8 +72,10 @@ class WorkQueue
     end
 
     def log_debug msg
-        return unless @log
-        @log_mutex.synchronize { @log.debug msg }
+        return unless @log.kind_of? Logger
+        @log_mutex.synchronize { 
+            @log.debug "\033[42;30m" << msg << "\033[0m"
+        }
     end
 
     def log_info msg
@@ -114,7 +118,7 @@ class WorkQueue
 
     def threadsShouldExit 
         return true if @thread_exit 
-        return true if @exit_on_empty and ( @queue.length <= s3ObjectQueue.num_waiting  )
+        return true if @exit_on_empty and ( @queue.length <= @queue.num_waiting  )
         return false 
     end
 
@@ -123,16 +127,28 @@ class WorkQueue
             raise WorkQueue::Error.new "Threads already spawned"
         end
         @config[:threads].times do 
-            @threads << Thread.new &@queue_runner_block
+            unless @queue_runner_block.kind_of? Proc
+                raise Error.new "@queue_runner_block should be Proc, is #{@queue_runner_block}"
+            end
+            t = Thread.new &@queue_runner_block
+            @threads << t
         end
     end
 
-    def joinThreads 
+    def threadCount 
+        return @threads.count
+    end
+
+    def joinThreads  
+        # it only makes sense to tell the threads to exit on empty here.
+        prev_exit_on_empty = @exit_on_empty
+        @exit_on_empty = true
         @threads.each do |th|
             th.join if th.alive?   
         end
         threads = @threads.dup
         @threads = [] 
+        @exit_on_empty = prev_exit_on_empty
         return threads
     end
 

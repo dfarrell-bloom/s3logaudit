@@ -27,20 +27,29 @@ describe WorkQueue do
             puts str
         end
     end
-    it "should write queued strings to stdout" do
-        wq = WorkQueue.new :threads => 5 do |str|
-            puts str
-        end
-        100.times do |t|
+    it "should write queued strings to stdout" do # simple example
+        wq = WorkQueue.new :threads => 3 do |str|
+            sleep( time = rand() / 10 )
+            msg = "#{Thread.current} (after #{time} seconds): #{str}"
+            Thread.exclusive { puts msg }
+        end 
+        # get the threads ready to run
+        wq.run
+        # enqueue some stuff
+        10.times do |t|
             wq.enqueue "#{rand()*100}"
         end
         wq.exit_on_empty = true
-        wq.run
-        wq.joinThreads
+        wq.joinThreads.each do |t|
+            t.should be_kind_of Thread
+            t.alive?().should == false
+        end 
+        wq.threadCount.should == 0  
+        
     end
         
     test_data = []
-    1000.times do 
+    10000.times do 
         test_data << rand() * 100
     end
     test_proc = proc { |arr,i|
@@ -50,6 +59,16 @@ describe WorkQueue do
     expected_results.each_index { |i|
         test_proc.call expected_results, i
     }
-
+    it "should accurately process the test array with the same results as done single-threaded" do
+        pr = test_proc.curry[test_data]
+        wq = WorkQueue.new( :log_level => Logger::INFO, :thread_wait_timeout => 0.1, :threads => 100 ) 
+        wq.setWorkBlock pr
+        wq.run
+        test_data.each_index { |i| 
+            wq.enqueue i 
+        }
+        wq.joinThreads 
+        test_data.should == expected_results
+    end
 
 end
