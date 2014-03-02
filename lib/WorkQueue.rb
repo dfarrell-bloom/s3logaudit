@@ -13,8 +13,8 @@ class WorkQueue
             # set to 0 if you want all threads to block on the queue forever.
             :queue_wait_timeout => 2, 
             :threads            => 10,
-            :log_level           => Logger::DEBUG,
-            :log_destination    => $stderr,
+            :log_level           => Logger::INFO,
+            :log_destination    => nil, # $stderr,
         }
     end
 

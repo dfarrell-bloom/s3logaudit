@@ -49,7 +49,7 @@ describe WorkQueue do
     end
         
     test_data = []
-    10000.times do 
+    100000.times do 
         test_data << rand() * 100
     end
     test_proc = proc { |arr,i|
@@ -60,9 +60,7 @@ describe WorkQueue do
         test_proc.call expected_results, i
     }
     it "should accurately process the test array with the same results as done single-threaded" do
-        pr = test_proc.curry[test_data]
-        wq = WorkQueue.new( :log_level => Logger::INFO, :thread_wait_timeout => 0.1, :threads => 100 ) 
-        wq.setWorkBlock pr
+        wq = WorkQueue.new :log_destination => nil, :thread_wait_timeout => 0.1, :threads => 500,  &(test_proc.curry[test_data])
         wq.run
         test_data.each_index { |i| 
             wq.enqueue i 
