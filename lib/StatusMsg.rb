@@ -10,13 +10,17 @@ class StatusMsg
 
     def mutex_lock
         @@mutex.owned? or @@mutex.lock
+        @lock_levels += 1
     end
 
     def mutex_unlock
+        @lock_levels -= 1
+        return unless @lock_levels == 0
         @@mutex.owned? and @@mutex.unlock 
     end
 
     def initialize
+        @lock_levels = 0
         reset
         set_outputter do |msg|
             $stderr.print msg

@@ -1,0 +1,9 @@
+
+<h2><%= title %></h2>
+<p><%= subtitle %></p>
+<ul>
+<% entries.each do |id,entry|
+%><li><h3><a href='<%= "#{base_url}/#{id}" %>'><%= entry['title'] %></a></h3>
+<p><%= entry['description'] %></p>
+</li>
+<% end %>

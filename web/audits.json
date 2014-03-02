@@ -1,0 +1,38 @@
+{
+  "unloggedBuckets": {
+    "tpl": "table",
+    "title": "Unlogged Buckets",
+    "query": "SELECT name as bucket, IF(empty,'Yes','No') as `Empty?` FROM buckets WHERE NOT `logging_enabled` ",
+    "description": "Display buckets which are not configured to be logged."
+  },
+  "buckets/empty": {
+    "tpl": "table", 
+    "title": "Empty Buckets",
+    "description": "Empty Buckets are candidates for removal",
+    "query": "SELECT name as bucket, MAX( `time`) as `Last Access` FROM buckets LEFT JOIN log_entries ON buckets.name = log_entries.bucket WHERE buckets.empty = TRUE GROUP BY bucket"
+  },
+  "bucket/operationsByRequester": {
+        "tpl": "table",
+        "title": "Operations per Bucket and Requester",
+        "description": "Show the operations performed on each bucket by each requester",
+        "query": "select requester, bucket, count(*) 'Number of Operations', group_concat( distinct REPLACE(operation, 'REST.', '' ) SEPARATOR ' ') 'Requester Bucket Operations' from log_entries group by requester, bucket order by bucket, requester "
+  },
+  "requester/OperationsByBucket": {
+        "tpl": "table",
+        "title": "Operations per Requester and Bucket",
+        "description": "Show the operations performed on each bucket by each requester",
+        "query": "select requester, bucket, count(*) 'Number of Operations', group_concat( distinct REPLACE(operation, 'REST.', '' ) SEPARATOR ' ') 'Requester Bucket Operations' from log_entries group by requester, bucket order by requester, bucket "
+  },
+  "buckets/objectAccessTimes": {
+        "tpl": "table",
+        "title": "First and Last OBJECT operations by Bucket",
+        "description": "Show each bucket's first and last logged OBJECT operation time.  This onlg shows OBJECT operations, not BUCKET or other operations.",
+        "setup": [ 
+            "create temporary table object_accesses select buckets.name as bucket, min(time) first_access, max(time) last_access, group_concat( distinct REPLACE( operation, 'REST.', '' ) SEPARATOR ' ' ) AS 'Object Operations' from buckets left join log_entries on ( log_entries.bucket = buckets.name ) WHERE operation LIKE '%OBJECT%' group by bucket order by last_access desc;"
+        ],
+        "query": "select buckets.name as bucket, first_access, last_access, `Object Operations` from buckets left join object_accesses on ( bucket = buckets.name ) ORDER BY last_access DESC",
+        "cleanup": [ 
+            "DROP TEMPORARY TABLE object_accesses"
+        ]
+  }
+}

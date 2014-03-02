@@ -8,6 +8,9 @@ additional_log_entries = []
 additional_log_entries.push <<-eof
 fa0120f03b0f093488ef26e8299feb9fc737d7d2929b9094be71b99fed14e331 bloom-prod-west1-backup [18/Feb/2014:07:40:51 +0000] - AmazonS3 16C0A391707CEAEE S3.TRANSITION.OBJECT sql/2013/11/prodwest-dbmaster/bloomhealth/mysqldump-15m-bloomhealth-D9440DF6-20131119-1300.sql.gz.gpg "-" - - - 737028378 - - "-" "-" -
 eof
+additional_log_entries.push <<-eof
+fa0120f03b0f093488ef26e8299feb9fc737d7d2929b9094be71b99fed14e331 bloom-production02-backup [27/Feb/2014:05:30:55 +0000] 66.41.101.112 fa0120f03b0f093488ef26e8299feb9fc737d7d2929b9094be71b99fed14e331 6DC992B9A6790F79 REST.COPY.OBJECT_GET sql/2014/02/production02-mysql-01a/etl_enrollment/mysqldump-15m-etl_enrollment-D9440DF6-20140223-2351.sql.gpg - 200 - - 150260968 - - - - -
+eof
 
 parsed_entry=nil
 expected_hash = nil 
@@ -153,7 +156,15 @@ describe S3LogSet do
                     }
 	             }
 =end
-	        }
+	        },
+            "bloom-production02-backup" => {
+                :bucket=>"bloom-production02-backup", 
+                :accessors=>["fa0120f03b0f093488ef26e8299feb9fc737d7d2929b9094be71b99fed14e331"], 
+                :actions=>{"fa0120f03b0f093488ef26e8299feb9fc737d7d2929b9094be71b99fed14e331"=>["REST.COPY.OBJECT_GET"]}, 
+                :first_access=> DateTime.parse("2014-02-27T05:30:55+00:00"), 
+                :last_access => DateTime.parse("2014-02-27T05:30:55+00:00"), 
+                :request_count=>1
+            }
         }
     end
 

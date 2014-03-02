@@ -1,0 +1,24 @@
+
+table.results {
+    background-color: white;
+    border: solid 1px black;
+    margin: 2px;
+    padding: 3px;
+    box-shadow: 1px 1px 1px 1px; 
+    border-collapse: collapse;
+}
+table.results th {
+    padding-left: 1em; 
+    padding-right: 1em;
+    background-color: #eee;
+}
+table.results  th, table.results td {
+    border: dotted 1px #1e1e1e;
+}
+table.results td {
+}
+
+table.results td ul {
+    margin: .3em;
+    padding-left: 1em;
+}

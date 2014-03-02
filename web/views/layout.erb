@@ -1,0 +1,21 @@
+<!Doctype html>
+<html>
+<head>
+<% %w{ index.css table.css }.each do |stylesheet| %>
+<link rel="stylesheet" href="/<%= stylesheet %>" />
+<% end %>
+<script src="https://code.jquery.com/jquery-1.11.0.min.js"></script>
+<script type='text/javascript' src='/appearances.js'></script>
+</head>
+<body>
+<h1>S3 Audit Web Interface</h1>
+<nav>
+<ul>
+<li><a href='/index.html'>Index</a></li>
+<li><a href='/audits'>Audits</a></li>
+<li><a href='/info'>Info</a></li>
+</ul>
+</nav>
+<%= yield %>
+</body>
+</html>

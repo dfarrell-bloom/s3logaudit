@@ -1,0 +1,14 @@
+{
+  "loggedbuckets": {
+    "tpl": "table",
+    "title": "Logged Buckets",
+    "query": "SELECT name as bucket, IF( logging_enabled, 'Yes','No') as `logging?`, log_destination, log_prefix, IF( is_log_destination, 'Yes', 'No') as `destination for logs?`, IF(empty, 'Yes', 'No' ) as `empty?`  FROM buckets ",
+    "description": "Display buckets examined for logging configuration."
+  },
+  "logEntries": {
+        "tpl": "table", 
+        "title": "All Log Entries", 
+        "query": "Select * from log_entries LEFT JOIN buckets ON log_entries.bucket = buckets.name ORDER BY time DESC ",
+        "description": "Display all log entries, newest at the top.  Warning, this is going to take a long time!"
+  }
+}

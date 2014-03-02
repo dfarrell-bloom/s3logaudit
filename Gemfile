@@ -2,8 +2,17 @@
 source "https://rubygems.org"
 
 gem "aws-sdk"
-gem "colorize"
-gem "mysql2"
+
+group "s3LogAudit" do
+    gem "colorize"
+    gem "mysql2"
+end
+
+group :webViewer do
+    gem "thin"
+    gem "sinatra"
+    gem "erubis"
+end
 
 group :test do
     gem "rspec"

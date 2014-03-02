@@ -134,15 +134,15 @@ class S3LogSet
             (?<request_id>[^\s]+)\s
             (?<operation>[^\s]+)\s
             (?<key>[^\s]+)\s
-            "(?<uri>[^"]+)"\s
+            ("(?<uri>[^"]+)"|(?<uri>-))\s
             (?<status>(-|[\d]+))\s
             (?<error>[^\s]+)\s
             (?<bytes_sent>(-|[\d]+))\s
             (?<object_size>(-|[\d]+))\s
             (?<total_ms>(-|[\d]+))\s
             (?<turnaround_ms>(-|[\d]+))\s
-            "(?<referrer>[^"]+)"\s
-            "(?<user_agent>[^"]+)"\s
+            ("(?<referrer>[^"]+)"|(?<referrer>-))\s
+            ("(?<user_agent>[^"]+)"|(?<user_agent>-))\s
             (?<version_id>.*)
         $/x.match entry
         if match

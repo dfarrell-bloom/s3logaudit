@@ -1,0 +1,11 @@
+<table class='monospace results'>
+<% 
+%><tr><% results.fields.each { |field| %><th><%= field %></th><% } %></tr><% 
+results.each do |row| 
+    %><tr><%
+    results.fields.each do |field|
+        %><td><%= renderers[ field ].call( row[ field ] ) %></td><% 
+    end
+    %></tr> 
+ <% end %>
+</table>
